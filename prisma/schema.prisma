@@ -1,0 +1,27 @@
+// Meowork production schema (PostgreSQL). MVP runtime uses the same shapes in-memory;
+// point DATABASE_URL at Postgres and run `prisma migrate dev` to persist.
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+
+enum AgentState { IDLE THINKING PLANNING WORKING WAITING_FOR_TOOL WAITING_FOR_USER REVIEWING ERROR COMPLETED }
+enum TaskStatus { QUEUED PLANNING RUNNING WAITING_FOR_USER REVIEWING COMPLETED FAILED CANCELLED }
+enum RiskLevel { LOW MEDIUM HIGH }
+enum MemoryScope { SHORT_TERM TASK_MEMORY PROJECT_MEMORY USER_PREFERENCE }
+
+model User { id String @id @default(cuid()); email String @unique; name String?; apiKeys ApiKey[]; tasks Task[]; office OfficeCustomization?; createdAt DateTime @default(now()) }
+model ApiKey { id String @id @default(cuid()); userId String; user User @relation(fields: [userId], references: [id]); provider String; encryptedKey String; createdAt DateTime @default(now()) }
+model Agent { id String @id; name String; role String; type AgentType @relation(fields: [typeId], references: [id]); typeId String; state AgentState @default(IDLE); current String @default(""); xp Int @default(0); level Int @default(1); memories AgentMemory[]; executions ToolExecution[] }
+model AgentType { id String @id; name String; tools String[]; agents Agent[] }
+model Task { id String @id; title String; description String; status TaskStatus @default(QUEUED); priority String @default("medium"); createdAt DateTime @default(now()); startedAt DateTime?; completedAt DateTime?; createdBy String; assignedAgent String; parentTaskId String?; estimatedCost Float @default(0); actualCost Float @default(0); inputTokens Int @default(0); outputTokens Int @default(0); result String?; subtasks SubTask[]; approvals ApprovalRequest[]; usage AIUsage[] }
+model SubTask { id String @id; parent Task @relation(fields: [parentTaskId], references: [id]); parentTaskId String; title String; description String; status TaskStatus @default(QUEUED); assignedAgent String; order Int; result String?; error String? }
+model Tool { name String @id; description String; risk RiskLevel; }
+model ToolExecution { id String @id @default(cuid()); taskId String; agentId String; agent Agent @relation(fields: [agentId], references: [id]); tool String; args Json; ok Boolean?; outputPreview String?; error String?; inputTokens Int @default(0); outputTokens Int @default(0); startedAt DateTime @default(now()); endedAt DateTime? }
+model AIProvider { id String @id; name String; baseUrl String; models AIModel[] }
+model AIModel { id String @id; providerId String; provider AIProvider @relation(fields: [providerId], references: [id]); model String; capabilities String[] }
+model ModelPricing { id String @id @default(cuid()); provider String; model String; inputPricePerMillion Float; outputPricePerMillion Float; cacheInputPricePerMillion Float?; effectiveFrom DateTime; effectiveUntil DateTime? }
+model AIUsage { id String @id @default(cuid()); taskId String; task Task @relation(fields: [taskId], references: [id]); agentId String; provider String; model String; inputTokens Int; outputTokens Int; totalTokens Int; inputCost Float; outputCost Float; totalCost Float; toolCalls Int @default(0); timestamp DateTime @default(now()) }
+model AgentMemory { id String @id @default(cuid()); agentId String; agent Agent @relation(fields: [agentId], references: [id]); scope MemoryScope; key String; value String; createdAt DateTime @default(now()) }
+model Project { id String @id @default(cuid()); name String; description String?; files String[] }
+model ApprovalRequest { id String @id @default(cuid()); taskId String; task Task @relation(fields: [taskId], references: [id]); agentId String; tool String; commandPreview String; risk RiskLevel; status String @default("PENDING"); createdAt DateTime @default(now()); decidedAt DateTime? }
+model ActivityLog { id String @id @default(cuid()); type String; agentId String?; taskId String?; message String; data Json?; ts DateTime @default(now()) }
+model OfficeCustomization { id String @id @default(cuid()); userId String @unique; user User @relation(fields: [userId], references: [id]); theme String @default("Cozy Cafe"); agentNames Json?; colors Json?; pet String? }
